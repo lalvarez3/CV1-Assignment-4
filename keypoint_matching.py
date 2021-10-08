@@ -4,7 +4,7 @@ def keypoint_matching(img1, img2):
 
     # 1. Detect interest points in each image 
 
-    # 2. Charcterize the local appearance of the regions 
+    # 2. Characterize the local appearance of the regions 
     # around interest points
 
     # 3. Get the set of matches between region descriptors in each image
@@ -21,14 +21,16 @@ def keypoint_matching(img1, img2):
 
     gray= cv2.cvtColor(img2,cv2.COLOR_BGR2GRAY)
     sift = cv2.SIFT_create()
-    kp = sift.detect(gray,None)
+    kp, des = sift.detectAndCompute(gray,None)
     img2=cv2.drawKeypoints(gray,kp,img2)
+    print(des)
+    # plt.imshow(img1)
+    # plt.show()
 
-    plt.imshow(img1)
-    plt.show()
+    # plt.imshow(img2)
+    # plt.show()
 
-    plt.imshow(img2)
-    plt.show()
+
     
 
 
