@@ -24,6 +24,21 @@ def keypoint_matching(img1, img2):
     x_new = b_est[np.arange(1,len(b_est),2)]
     y_new = b_est[np.arange(0,len(b_est),2)]
 
+    coords_new = list(zip(x_new,y_new))
+    new_kps = cv2.KeyPoint_convert(coords_new)
+
+    # PLOT DOES NOT WORK YET, DONT KNOW HOW TO CONNECT THE LINES BETWEEN ORIGINAL POINTS TO TRANSFORMED
+    # POINTS IN THE NEW IMAGE
+    
+    # fake_matches = np.arange(len(kp1))
+    # img3 = cv2.drawMatches(img1,kp1,img2,new_kps,fake_matches[:100],None,flags=2)
+
+    plt.imshow(img3)
+    plt.show()
+    # cv2.circle(img2,)
+
+
+
 
 def find_kp_des(img):
     gray= cv2.cvtColor(img1,cv2.COLOR_BGR2GRAY)
