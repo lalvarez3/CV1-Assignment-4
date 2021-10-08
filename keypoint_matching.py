@@ -16,20 +16,29 @@ def keypoint_matching(img1, img2):
 
     gray1= cv2.cvtColor(img1,cv2.COLOR_BGR2GRAY)
     sift = cv2.SIFT_create()
-    kp = sift.detect(gray,None)
-    img1=cv2.drawKeypoints(gray,kp,img1)
+    kp1 = sift.detect(gray1,None)
+    img1=cv2.drawKeypoints(gray1,kp1,img1)
 
     gray2= cv2.cvtColor(img2,cv2.COLOR_BGR2GRAY)
     sift = cv2.SIFT_create()
-    kp, des = sift.detectAndCompute(gray,None)
-    img2=cv2.drawKeypoints(gray,kp,img2)
+    kp2, des = sift.detectAndCompute(gray2,None)
+    img2=cv2.drawKeypoints(gray2,kp2,img2)
     print(des.shape)
     # plt.imshow(img1)
     # plt.show()
     matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    matches = matcher.match(des1,des2)
-    # plt.imshow(img2)
+    matches = matcher.match(gray1,gray2)
+    plt.imshow(img2)
     # plt.show()
+
+
+    # Sort them in the order of their distance.
+    matches = sorted(matches, key = lambda x:x.distance)
+
+    # Draw first 10 matches.
+    img3 = cv2.drawMatches(img1,kp1,img2,kp2,matches[:10],None, flags=2)
+
+    plt.imshow(img3),plt.show()
 
 
     
