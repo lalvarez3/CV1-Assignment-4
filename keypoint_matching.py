@@ -1,6 +1,8 @@
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
+from cv2 import DMatch as match_kp 
+import scipy.ndimage as ndimage
 
 def keypoint_matching(img1, img2):
 
@@ -21,20 +23,38 @@ def keypoint_matching(img1, img2):
     b_est = np.matmul(A,t_sp) 
 
     #unpack b_est, which are the estimated new coordinates of the keypoints
-    x_new = b_est[np.arange(1,len(b_est),2)]
-    y_new = b_est[np.arange(0,len(b_est),2)]
+    #NOTE: I changed this cause when I debuged I noticed coordinates were swapped
+    x_new = b_est[np.arange(0,len(b_est),2)]
+    y_new = b_est[np.arange(1,len(b_est),2)]
+
+    x_true = b[np.arange(0,len(b_est),2)]
+    y_true = b[np.arange(1,len(b_est),2)]
 
     coords_new = list(zip(x_new,y_new))
+    coords_true = list(zip(x_true,y_true))
+
     new_kps = cv2.KeyPoint_convert(coords_new)
 
-    # PLOT DOES NOT WORK YET, DONT KNOW HOW TO CONNECT THE LINES BETWEEN ORIGINAL POINTS TO TRANSFORMED
-    # POINTS IN THE NEW IMAGE
-    
-    # fake_matches = np.arange(len(kp1))
-    # img3 = cv2.drawMatches(img1,kp1,img2,new_kps,fake_matches[:100],None,flags=2)
+    fake_matches = [match_kp(value, value, 0, 0.0) for value in range(len(kp1))]
+    sampled_matches = np.random.choice(fake_matches,10,replace = False)
+    img3 = cv2.drawMatches(img1,kp1,img2,new_kps,matches1to2=sampled_matches,outImg=None)
+    # plt.imshow(img3)
+    # plt.show()
 
-    plt.imshow(img3)
-    plt.show()
+    inliners_count = 0
+    
+    #calculate the number of inliners
+    for new, true in zip(coords_new, coords_true):
+        nx, ny = new
+        tx, ty = true
+        # TODO: we have to add neighbouthood of 10 pixels
+        if int(nx) == int(tx) and int(ny) == int(ty):
+            inliners_count += 1
+    
+    # PROBABLY WRONG CAUSE IT SAYS THEY ARE ALL INLINERS WHICH IS VERY UNLIKELY :(
+    print(f'From a total of {len(coords_new)} objects, {inliners_count} are inliners')
+
+
     # cv2.circle(img2,)
 
 
