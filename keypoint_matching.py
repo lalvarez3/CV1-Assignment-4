@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from cv2 import DMatch as match_kp 
 import scipy.ndimage as ndimage
+from sklearn.metrics.pairwise import paired_distances
 
 def keypoint_matching(img1, img2):
 
@@ -15,7 +16,7 @@ def keypoint_matching(img1, img2):
     matches = matcher.match(des1,des2)
 
     #create the A matrix which will be used to perform affine transform
-    A, b = create_Ab(matches,kp1,kp2)
+    A, b, new_kp1, new_kp2 = create_Ab(matches,kp1,kp2)
 
     #one round of RANSAC (need to incorporate a loop)
     sampled_matches = np.random.choice(matches,10,replace = False)
@@ -35,24 +36,23 @@ def keypoint_matching(img1, img2):
 
     new_kps = cv2.KeyPoint_convert(coords_new)
 
-    fake_matches = [match_kp(value, value, 0, 0.0) for value in range(len(kp1))]
-    sampled_matches = np.random.choice(fake_matches,10,replace = False)
-    img3 = cv2.drawMatches(img1,kp1,img2,new_kps,matches1to2=sampled_matches,outImg=None)
-    # plt.imshow(img3)
+    subset = np.linspace(0, len(new_kp1)-1, 100, dtype=int)
+    new_kp1 = np.array(new_kp1)
+    new_kps = np.array(new_kps)
+    fake_matches = [match_kp(value, value, 0, 0.0) for value in range(len(new_kp1[subset]))]
+    # sampled_matches = np.random.choice(fake_matches,10,replace = False)
+    img3 = cv2.drawMatches(img1,new_kp1[subset],img2,new_kps[subset],matches1to2=fake_matches,outImg=None)
+    plt.imshow(img3)
     # plt.show()
-
-    inliners_count = 0
     
-    #calculate the number of inliners
-    for new, true in zip(coords_new, coords_true):
-        nx, ny = new
-        tx, ty = true
-        # TODO: we have to add neighbouthood of 10 pixels
-        if int(nx) == int(tx) and int(ny) == int(ty):
-            inliners_count += 1
+    est_coordinates = np.stack([x_new, y_new],axis = 1)
+    true_coordinates = np.stack([x_true, y_true],axis = 1)
+
+    distances = paired_distances(est_coordinates,true_coordinates)
+    inliners = np.sum(distances <= 10)
     
     # PROBABLY WRONG CAUSE IT SAYS THEY ARE ALL INLINERS WHICH IS VERY UNLIKELY :(
-    print(f'From a total of {len(coords_new)} objects, {inliners_count} are inliners')
+    print(f'From a total of {len(coords_new)} objects, {inliners} are inliners')
 
 
     # cv2.circle(img2,)
@@ -61,7 +61,7 @@ def keypoint_matching(img1, img2):
 
 
 def find_kp_des(img):
-    gray= cv2.cvtColor(img1,cv2.COLOR_BGR2GRAY)
+    gray= cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
     sift = cv2.SIFT_create()
     kp,des = sift.detectAndCompute(gray,None)
     return kp,des
@@ -69,26 +69,35 @@ def find_kp_des(img):
 def fit_sample(sampled_matches,kp1,kp2):
     # takes the sampled match indices as inputs, fits a line with least squares
     # to obtain the affine transformation parameters for 1 RANSAC sample
-    A_sp,b_sp = create_Ab(sampled_matches,kp1,kp2)
-    t_sp,*_ = np.linalg.lstsq(A_sp,b_sp)
+    A_sp,b_sp, new_kp1, new_kp2 = create_Ab(sampled_matches,kp1,kp2)
+    t_sp,res,*_ = np.linalg.lstsq(A_sp,b_sp)
     return t_sp
 
 def create_Ab(matches,kp1,kp2):
     # given the matches and the keypoints, construct matrix A and vector b
     A = []
     b = []
+
+    new_kp1 = []
+    new_kp2 = []
+
     for x in matches:
         id1 = x.queryIdx
         id2 = x.trainIdx
+
         x1,y1 = kp1[id1].pt
         x2,y2 = kp2[id2].pt
+
+        new_kp1.append(kp1[id1])
+        new_kp2.append(kp2[id2])
 
         b.append(x2)
         b.append(y2)
 
         a = [[x1,y1,1,0,0,0],[0,0,0,x1,y1,1]]
         A.append(a)
-    return np.concatenate(A), np.array(b)
+
+    return np.concatenate(A), np.array(b), new_kp1, new_kp2
 
     
 if __name__ == '__main__':
