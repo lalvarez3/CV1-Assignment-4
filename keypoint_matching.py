@@ -7,6 +7,7 @@ from sklearn.metrics.pairwise import paired_distances
 
 np.random.seed(seed=0)
 
+
 def RANSAC_round(matches, kp1, new_kp1, kp2, A, b):
     sampled_matches = np.random.choice(matches, 10, replace=False)
     t_sp = fit_sample(sampled_matches, kp1, kp2)
@@ -25,11 +26,11 @@ def RANSAC_round(matches, kp1, new_kp1, kp2, A, b):
     new_kps = cv2.KeyPoint_convert(coords_new)
 
     subset = np.linspace(0, len(new_kp1)-1, 100, dtype=int)
-    
+
     new_kps = np.array(new_kps)
     fake_matches = [match_kp(value, value, 0, 0.0)
                     for value in range(len(new_kp1[subset]))]
-    #TODO: increase point size and reduce sample size
+    # TODO: increase point size and reduce sample size
     img3 = cv2.drawMatches(
         img1, new_kp1[subset], img2, new_kps[subset], matches1to2=fake_matches, outImg=None)
     # plt.show()
@@ -43,7 +44,6 @@ def RANSAC_round(matches, kp1, new_kp1, kp2, A, b):
 
     # print(
     #         f'From a total of {len(coords_new)} objects, {inliners} are inliners')
-        
 
     return inliners, t_sp, new_kps
 
@@ -62,23 +62,25 @@ def keypoint_matching(img1, img2):
     A, b, new_kp1, new_kp2 = create_Ab(matches, kp1, kp2)
 
     # one round of RANSAC (need to incorporate a loop)
-    rounds = 1
+    rounds = 500
     best_total_inliners = (0, [-1])
 
     for round in range(rounds):
-        inliners, t_sp, new_kps = RANSAC_round(matches, kp1, new_kp1, kp2, A, b)
+        inliners, t_sp, new_kps = RANSAC_round( #TODO: extract this to a class RANSAC.py
+            matches, kp1, new_kp1, kp2, A, b)
         # TODO: we also have to save the inliners (points)
         if inliners > best_total_inliners[0]:
             best_total_inliners = (inliners, t_sp, new_kps)
-    
-    print(f'Best result {best_total_inliners[0]} with t: {best_total_inliners[1]}')
+
+    print(
+        f'Best result {best_total_inliners[0]} with t: {best_total_inliners[1]}')
 
     new_kps = best_total_inliners[2]
-    subset = np.linspace(0, len(new_kp1)-1, 100, dtype=int)
+    subset = np.linspace(0, len(new_kp1)-1, 10, dtype=int)
     fake_matches = [match_kp(value, value, 0, 0.0)
-            for value in range(len(new_kp1[subset]))]
+                    for value in range(len(new_kp1[subset]))]
     img3 = cv2.drawMatches(
-    img1, new_kp1[subset], img2, new_kps[subset], matches1to2=fake_matches, outImg=None)        
+        img1, new_kp1[subset], img2, new_kps[subset], matches1to2=fake_matches, outImg=None)
     plt.imshow(img3)
     plt.savefig(f'best_result_{best_total_inliners[0]}_inliners')
 
@@ -86,45 +88,64 @@ def keypoint_matching(img1, img2):
 
     new_A = []
     coordinates = []
-    for row in gray:
-        for column in row:
-            x1 = row
-            y1 =  column
+    for i, row in enumerate(gray):
+        for j, column in enumerate(row):
+            x1 = i
+            y1 = j
             coordinates.append((x1, y1))
             new_A.append([[x1, y1, 1, 0, 0, 0], [0, 0, 0, x1, y1, 1]])
- 
-    new_A = np.concatenate(new_A)
 
-    # shape of b_est is (1156000,)
+    new_A = np.concatenate(new_A)
     b_est = np.matmul(new_A, best_total_inliners[1])
 
     # TODO: shape after this gives (578000, 2, 850) for x_new
     x_new = b_est[np.arange(0, len(b_est), 2)]
     y_new = b_est[np.arange(1, len(b_est), 2)]
 
-    # TODO: fix coordinates shape dont match
-    coords_new = list(zip(x_new, y_new))
-    coords_new_int = [ (int(x),int(y)) for x, y in coords_new]
+    new_rotated_0 = np.zeros(np.shape(gray))
+    new_rotated = np.full(np.shape(gray), fill_value=-1)
 
-    new_rotated_0 = np.zeros(np.shape(img1))
-    new_rotated = np.full(np.shape(img1), fill_value = -1)
+    for init, x, y in zip(coordinates, x_new, y_new):
+        pixel_value = gray[init[0], init[1]]
+        if x > 0 and x < np.shape(gray)[0] and y > 0 and y < np.shape(gray)[1]:
+            x = int(x)
+            y = int(y)
+            new_rotated_0[x, y] = pixel_value
+            new_rotated[x, y] = pixel_value
 
-    for init, new in zip(coordinates, coords_new_int):
-        pixel_value = img1[init[0], init[1]]
-        new_rotated_0[new[0], new[1]] =  pixel_value
-        new_rotated[new[0], new[1]] =  pixel_value
-
+    plt.figure()
     plt.imshow(new_rotated_0)
     plt.savefig(f'new_rotated')
 
-    
+    counter = 0
+    for i, row in enumerate(new_rotated):
+        for j, column in enumerate(row):
+            
+            if new_rotated[i][j] == -1:
+                points = [ (i, j+1), (i+1, j), (i-1,j), (i,j-1), (i+1,j+1), (i-1, j-1)]
+                pixels = []
+                for point in points:
+                    try:
+                        pixels.append(new_rotated[point[0], point[1]])
+                    except:
+                        pass
+                pixel_mean = np.mean(pixels)
+
+                new_rotated[i][j] = pixel_mean
 
 
+    counter = 0
+    for i, row in enumerate(new_rotated):
+        for j, column in enumerate(row):
+            if new_rotated[i][j] == -1:
+                counter += 1
 
-       
-    
+    plt.figure()
+    plt.imshow(new_rotated)
+    plt.savefig(f'new_rotated_final')
 
-    # cv2.circle(img2,)
+    print("Errores:   ", counter)
+
 
 
 def find_kp_des(img):
@@ -168,13 +189,16 @@ def create_Ab(matches, kp1, kp2):
 
     new_kp1 = np.array(new_kp1)
     new_kp2 = np.array(new_kp2)
-    
+
     return np.concatenate(A), np.array(b), new_kp1, new_kp2
 
 
 if __name__ == '__main__':
     path_to_img1 = 'boat1.pgm'
     path_to_img2 = 'boat2.pgm'
+
     img1 = cv2.imread(path_to_img1)
     img2 = cv2.imread(path_to_img2)
+
+    # TODO: the fucntion when img2 to img1 does not output expeced result :( Dont know why
     keypoint_matching(img1, img2)
