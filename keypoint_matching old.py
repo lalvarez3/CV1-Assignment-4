@@ -7,77 +7,87 @@ from sklearn.metrics.pairwise import paired_distances
 
 np.random.seed(seed=0)
 
-def b_to_coordinates(b):
-    len_b = len(b)
-    x = b[np.arange(0, len_b, 2)]
-    y = b[np.arange(1, len_b, 2)]
-    return x,y
 
-def RANSAC_round(matches, kp1, matched_kp1, kp2, matched_kp2,A, b):
+def RANSAC_round(matches, kp1, new_kp1, kp2, A, b):
     sampled_matches = np.random.choice(matches, 10, replace=False)
-
-    #LOOK AT HERE, DOES IT CHOOSE FROM THE MATCHED KEYPOINTS?
-
     t_sp = fit_sample(sampled_matches, kp1, kp2)
-
     b_est = np.matmul(A, t_sp)
-    x_new, y_new = b_to_coordinates(b_est)
-    x_true,y_true = b_to_coordinates(b)
+
+    # unpack b_est, which are the estimated new coordinates of the keypoints
+    x_new = b_est[np.arange(0, len(b_est), 2)]
+    y_new = b_est[np.arange(1, len(b_est), 2)]
+
+    x_true = b[np.arange(0, len(b_est), 2)]
+    y_true = b[np.arange(1, len(b_est), 2)]
+
     coords_new = list(zip(x_new, y_new))
-    kps_new = np.array(cv2.KeyPoint_convert(coords_new))
+    coords_true = list(zip(x_true, y_true))
+
+    new_kps = cv2.KeyPoint_convert(coords_new)
+
+    subset = np.linspace(0, len(new_kp1)-1, 100, dtype=int)
+
+    new_kps = np.array(new_kps)
+    fake_matches = [match_kp(value, value, 0, 0.0)
+                    for value in range(len(new_kp1[subset]))]
+    # TODO: increase point size and reduce sample size
+    # img3 = cv2.drawMatches(
+    #     img1, new_kp1[subset], img2, new_kps[subset], matches1to2=fake_matches, outImg=None)
+    # plt.show()
 
     est_coordinates = np.stack([x_new, y_new], axis=1)
     true_coordinates = np.stack([x_true, y_true], axis=1)
 
+    # TODO: we have to return the inliners
     distances = paired_distances(est_coordinates, true_coordinates)
     inliners = np.sum(distances <= 10)
-    return inliners, t_sp, kps_new
+
+    # print(
+    #         f'From a total of {len(coords_new)} objects, {inliners} are inliners')
+
+    return inliners, t_sp, new_kps
 
 
-def RANSAC(img1, img2,rounds = 1000, plot_result = False):
+def RANSAC(img1, img2,plot_result = False):
+
+    # # first find keypoints and corresponding descriptors
+    # kp1, des1 = find_kp_des(img1)
+    # kp2, des2 = find_kp_des(img2)
+
+    # # match the kps/descriptors
+    # matcher = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
+    # matches = matcher.match(des1, des2)
+
     matches,kp1,kp2 = keypoint_matching(img1,img2)
-    A, b, matched_kp1, matched_kp2 = create_Ab(matches, kp1, kp2) #matrix A contains ALL matched keypoints
-    print('number of matches: ',len(matches))
-
+    A, b, new_kp1, new_kp2 = create_Ab(matches, kp1, kp2) #matrix A contains ALL matched keypoints
+    
+    #RANSAC
+    rounds = 50000
     best_total_inliners = (0, [-1])
+
     for round in range(rounds):
-        inliners, t_sp, new_kps = RANSAC_round(matches, kp1, matched_kp1, kp2, matched_kp2, A, b)
+        inliners, t_sp, new_kps = RANSAC_round( #TODO: extract this to a class RANSAC.py
+            matches, kp1, new_kp1, kp2, A, b)
+        # TODO: we also have to save the inliners (points)
         if inliners > best_total_inliners[0]:
             best_total_inliners = (inliners, t_sp, new_kps)
 
     print(
         f'Best result {best_total_inliners[0]} with t: {best_total_inliners[1]}')
+
     new_kps = best_total_inliners[2]
 
     if plot_result:
-        subset = np.linspace(0, len(matched_kp1)-1, 10, dtype=int)
+        subset = np.linspace(0, len(new_kp1)-1, 10, dtype=int)
         fake_matches = [match_kp(value, value, 0, 0.0)
-                        for value in range(len(matched_kp1[subset]))]
+                        for value in range(len(new_kp1[subset]))]
         img3 = cv2.drawMatches(
-            img1, matched_kp1[subset], img2, new_kps[subset], matches1to2=fake_matches, outImg=None)
+            img1, new_kp1[subset], img2, new_kps[subset], matches1to2=fake_matches, outImg=None)
         plt.imshow(img3)
         plt.savefig(f'best_result_{best_total_inliners[0]}_inliners')
-    
-    # subset = np.linspace(0, len(matched_kp1)-1, 10, dtype=int)
-    # fake_matches = [match_kp(value, value, 0, 0.0)
-    #                 for value in range(len(matched_kp1[subset]))]
-    # img3 = cv2.drawMatches(
-    #     img1, matched_kp1[subset], img2, new_kps[subset], matches1to2=fake_matches, outImg=None)
-    # plt.imshow(img3)
-    # plt.show()
 
-    #HIERBOVEN KAN FOUT NIET ZITTEN-----------------------------------------------------------
-    if len(np.shape(img1)) > 2:
-        gray = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
-    else:
-        gray = img1
+    gray = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
 
-    if len(np.shape(img2)) > 2:
-        target_gray = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
-    else:
-        target_gray = img2
-
-    #constructing matrix comtaining all coordinates
     new_A = []
     coordinates = []
     for i, row in enumerate(gray):
@@ -90,27 +100,21 @@ def RANSAC(img1, img2,rounds = 1000, plot_result = False):
     new_A = np.concatenate(new_A)
     b_est = np.matmul(new_A, best_total_inliners[1])
 
-    x_tr,y_tr = b_to_coordinates(b_est)
-
     # TODO: shape after this gives (578000, 2, 850) for x_new
-    # x_new = b_est[np.arange(0, len(b_est), 2)]
-    # y_new = b_est[np.arange(1, len(b_est), 2)]
+    x_new = b_est[np.arange(0, len(b_est), 2)]
+    y_new = b_est[np.arange(1, len(b_est), 2)]
 
-    new_rotated_0 = np.zeros(np.shape(target_gray))
-    new_rotated = np.full(np.shape(target_gray), fill_value=-1)
+    new_rotated_0 = np.zeros(np.shape(gray))
+    new_rotated = np.full(np.shape(gray), fill_value=-1)
 
-    print("size of target: ",np.shape(target_gray))
-
-    for init, x, y in zip(coordinates, x_tr, y_tr):
+    for init, x, y in zip(coordinates, x_new, y_new):
         pixel_value = gray[init[0], init[1]]
-        if x >= 0 and x < np.shape(target_gray)[0] and y >= 0 and y < np.shape(target_gray)[1]:
+        if x > 0 and x < np.shape(gray)[0] and y > 0 and y < np.shape(gray)[1]:
             x = int(x)
             y = int(y)
             new_rotated_0[x, y] = pixel_value
             new_rotated[x, y] = pixel_value
 
-    plt.imshow(new_rotated_0)
-    plt.show()
     if plot_result:
         plt.figure()
         plt.imshow(new_rotated_0)
@@ -133,19 +137,23 @@ def RANSAC(img1, img2,rounds = 1000, plot_result = False):
                 new_rotated[i][j] = pixel_mean
 
 
-    # counter = 0
-    # for i, row in enumerate(new_rotated):
-    #     for j, column in enumerate(row):
-    #         if new_rotated[i][j] == -1:
-    #             counter += 1
+    counter = 0
+    for i, row in enumerate(new_rotated):
+        for j, column in enumerate(row):
+            if new_rotated[i][j] == -1:
+                counter += 1
 
     if plot_result:
         plt.figure()
         plt.imshow(new_rotated)
         plt.savefig(f'new_rotated_final')
 
-    # print("Errors:   ", counter)
-    return new_rotated, best_total_inliners[1]
+    # plt.figure()
+    plt.imshow(new_rotated)
+    plt.show()
+
+    print("Errors:   ", counter)
+    return new_rotated
 
 
 def keypoint_matching(img1, img2):
@@ -158,10 +166,7 @@ def keypoint_matching(img1, img2):
     return matches,kp1,kp2
 
 def find_kp_des(img):
-    if len(img.shape) >2:
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    else:
-        gray=img.astype(np.uint8)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     sift = cv2.SIFT_create()
     kp, des = sift.detectAndCompute(gray, None)
     return kp, des
@@ -216,4 +221,4 @@ if __name__ == '__main__':
     img2 = cv2.imread(path_to_img2)
 
     # TODO: the fucntion when img2 to img1 does not output expeced result :( Dont know why
-    print(RANSAC(img1, img2,plot_result=False,rounds=50000))
+    print(RANSAC(img1, img2,plot_result=False))
