@@ -7,6 +7,24 @@ from sklearn.metrics.pairwise import paired_distances
 
 np.random.seed(seed=0)
 
+affine_matrix = [[],[]]
+
+def test(img, coords_1, coords_2):
+    # open CV transformation 
+    rows,cols, _ = img.shape
+    # TODO: experiment with other points
+    pts1 = np.float32([[x, y] for x, y in coords_1])
+    pts2 = np.float32([[x, y] for x, y in coords_2])
+    # OpenCV 
+    M = cv2.getAffineTransform(pts1,pts2)
+    print(M)
+    rotated = cv2.warpAffine(img,M,(cols,rows))
+    plt.figure()
+    plt.imshow(rotated)
+    plt.show()
+    
+    return rotated
+
 def b_to_coordinates(b):
     len_b = len(b)
     x = b[np.arange(0, len_b, 2)]
@@ -36,6 +54,7 @@ def RANSAC_round(matches, kp1, matched_kp1, kp2, matched_kp2,A, b):
 
 def RANSAC(img1, img2,rounds = 1000, plot_result = False):
     matches,kp1,kp2 = keypoint_matching(img1,img2)
+
     A, b, matched_kp1, matched_kp2 = create_Ab(matches, kp1, kp2) #matrix A contains ALL matched keypoints
     print('number of matches: ',len(matches))
 
@@ -85,7 +104,7 @@ def RANSAC(img1, img2,rounds = 1000, plot_result = False):
             x1 = i
             y1 = j
             coordinates.append((x1, y1))
-            new_A.append([[x1, y1, 1, 0, 0, 0], [0, 0, 0, x1, y1, 1]])
+            new_A.append([[x1, y1, 0, 0, 1, 0], [0, 0, x1, y1, 0, 1]])
 
     new_A = np.concatenate(new_A)
     b_est = np.matmul(new_A, best_total_inliners[1])
@@ -108,6 +127,11 @@ def RANSAC(img1, img2,rounds = 1000, plot_result = False):
             y = int(y)
             new_rotated_0[x, y] = pixel_value
             new_rotated[x, y] = pixel_value
+    
+    # result = test(img1, coordinates, list(zip(x_tr, y_tr)))
+    # plt.figure()
+    # plt.imshow(result)
+    # plt.show()
 
     plt.imshow(new_rotated_0)
     plt.show()
@@ -141,8 +165,9 @@ def RANSAC(img1, img2,rounds = 1000, plot_result = False):
 
     if plot_result:
         plt.figure()
-        plt.imshow(new_rotated)
+        plt.imshow(new_rotated, cmap='gray')
         plt.savefig(f'new_rotated_final')
+
 
     # print("Errors:   ", counter)
     return new_rotated, best_total_inliners[1]
@@ -154,6 +179,10 @@ def keypoint_matching(img1, img2):
 
     matcher = cv2.BFMatcher(cv2.NORM_L1, crossCheck=True)
     matches = matcher.match(des1, des2)
+
+    img3 = cv2.drawMatches(img1,kp1,img2,kp2,matches[:10],None, flags=2)
+
+    plt.imshow(img3),plt.show()
 
     return matches,kp1,kp2
 
@@ -171,7 +200,8 @@ def fit_sample(sampled_matches, kp1, kp2):
     # takes the sampled match indices as inputs, fits a line with least squares
     # to obtain the affine transformation parameters for 1 RANSAC sample
     A_sp, b_sp, new_kp1, new_kp2 = create_Ab(sampled_matches, kp1, kp2)
-    t_sp, res, *_ = np.linalg.lstsq(A_sp, b_sp, rcond=-1)
+    # t_sp, res, *_ = np.linalg.lstsq(A_sp, b_sp, rcond=-1)
+    t_sp = np.matmul(np.linalg.pinv(A_sp),b_sp)
     return t_sp
 
 
@@ -196,7 +226,7 @@ def create_Ab(matches, kp1, kp2):
         b.append(x2)
         b.append(y2)
 
-        a = [[x1, y1, 1, 0, 0, 0], [0, 0, 0, x1, y1, 1]]
+        a = [[x1, y1, 0, 0, 1, 0], [0, 0, x1, y1, 0, 1]]
         A.append(a)
 
     new_kp1 = np.array(new_kp1)
@@ -206,14 +236,17 @@ def create_Ab(matches, kp1, kp2):
 
 
 if __name__ == '__main__':
-    # path_to_img1 = 'boat1.pgm'
-    # path_to_img2 = 'boat2.pgm'
+    path_to_img1 = 'boat1.pgm'
+    path_to_img2 = 'boat2.pgm'
 
-    path_to_img1 = 'right.jpg'
-    path_to_img2 = 'left.jpg'
+    # path_to_img1 = 'right.jpg'
+    # path_to_img2 = 'left.jpg'
 
     img1 = cv2.imread(path_to_img1)
     img2 = cv2.imread(path_to_img2)
 
     # TODO: the fucntion when img2 to img1 does not output expeced result :( Dont know why
-    print(RANSAC(img1, img2,plot_result=False,rounds=50000))
+    print(RANSAC(img1, img2 ,plot_result=True,rounds=200))
+
+
+
